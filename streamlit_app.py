@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import datetime
+import time
 
 st.set_page_config(page_title="Wealth Engineering Engine", layout="wide")
 st.title("✅ WEALTH ENGINEERING: DYNAMIC CATALYST ENGINE")
@@ -23,21 +24,35 @@ with st.sidebar:
     shield_pct = st.slider("Mechanical Shield %", 0, 30, 12)
 
 # --- Engine Logic ---
+@st.cache_data(ttl=600)
 def get_audit(ticker_symbol):
-    t = yf.Ticker(ticker_symbol)
-    hist = t.history(period='5d')
-    last = hist['Close'].iloc[-1]
-    chg = ((last / hist['Close'].iloc[-2]) - 1) * 100
-    return last, chg, t.info.get('fiftyTwoWeekHigh', last)
+    try:
+        t = yf.Ticker(ticker_symbol)
+        # Use a longer period to ensure we get data even if there's a minor delay
+        hist = t.history(period='1mo')
+        if hist.empty:
+            return None, None, None
+        
+        last = hist['Close'].iloc[-1]
+        prev_close = hist['Close'].iloc[-2]
+        chg = ((last / prev_close) - 1) * 100
+        high_52 = hist['High'].max() # Simplified high check
+        return last, chg, high_52
+    except Exception as e:
+        return None, None, None
 
 if st.button("RUN INSTITUTIONAL AUDIT"):
-    price, change, high_52 = get_audit(ticker)
+    with st.spinner("Fetching Market Data..."):
+        price, change, high_52 = get_audit(ticker)
     
-    # Display Metric
-    st.metric(label=f"LIVE PRICE: {ticker}", value=f"${price:.2f}", delta=f"{change:.2f}%")
+    if price is not None:
+        # Display Metric
+        st.metric(label=f"LIVE PRICE: {ticker}", value=f"${price:.2f}", delta=f"{change:.2f}%")
 
-    if reaction == "Runaway Trend":
-        st.error("🚨 PROTOCOL ALERT: CLOSING AUCTION TIME-STOP ACTIVE")
-        st.warning("MANDATORY LIQUIDATION: 3:50 PM EST (MARKET ON CLOSE)")
+        if reaction == "Runaway Trend":
+            st.error("🚨 PROTOCOL ALERT: CLOSING AUCTION TIME-STOP ACTIVE")
+            st.warning("MANDATORY LIQUIDATION: 3:50 PM EST (MARKET ON CLOSE)")
 
-    st.info(f"True Velocity and Projections would calculate here using ${current_val} base.")
+        st.info(f"True Velocity and Projections would calculate here using ${current_val} base.")
+    else:
+        st.error("⚠️ DATA FETCH ERROR: Yahoo Finance is currently rate-limiting this server. Please try again in a few minutes or try a different ticker.")
